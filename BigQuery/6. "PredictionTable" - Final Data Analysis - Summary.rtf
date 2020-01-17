@@ -1,0 +1,141 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1671\cocoasubrtf600
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww19180\viewh8780\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 ------------------------------------------------------------------------------------------------------------------------------------------------------------\
+----------------------------------------------  CLASSIFICATION SPORTING EVENT  ----------------------------------------------------\
+------------------------------------------------------------------------------------------------------------------------------------------------------------\
+--- CREATE TABLE `thesisprojects2019.audeMS.stadia_event_classification` AS\
+--- SELECT * \
+--- FROM (\
+---             SELECT eventid, event, venueid, venue, \
+---                          IF (REGEXP_CONTAINS(event, r'^NFL'), 5, IF (REGEXP_CONTAINS(venue, r'^twickenham'), 4, \
+---                          IF (REGEXP_CONTAINS(event, r'^Watford') OR REGEXP_CONTAINS(event, r'^West Ham'), 1,\
+---                          IF (REGEXP_CONTAINS(event, r'^England') AND REGEXP_CONTAINS(venue, r'^wembley'), 3, \
+---                          IF (REGEXP_CONTAINS(event, r'^THFC RealMadrid') OR REGEXP_CONTAINS(event, r'^THFC Dortmund')\
+---                          OR REGEXP_CONTAINS(event, r'^THFC Liverpool'),2, 1))))) as event_type_id,\
+---                          IF (REGEXP_CONTAINS(event, r'^NFL'), 'NFL', IF (REGEXP_CONTAINS(venue, r'^twickenham'), 'Rugby International', \
+---                          IF (REGEXP_CONTAINS(event, r'^Watford') OR REGEXP_CONTAINS(event, r'^West Ham'), 'Premier League',\
+---                          IF (REGEXP_CONTAINS(event, r'^England') AND REGEXP_CONTAINS(venue, r'^wembley'), 'International Football', \
+---                          IF (REGEXP_CONTAINS(event, r'^THFC RealMadrid') OR REGEXP_CONTAINS(event, r'^THFC Dortmund'),'Champions League', \
+---                          'Premier League'))))) as event_type,\
+---                          day_week,  IF (day_week = 1 OR day_week = 7, 'weekend', 'week') as weekend_day,\
+---                          IF (day_week = 1 OR day_week = 7, 1, 2) as weekend_day_id,\
+---                          IF (start_time < '14:30:00', 1 , IF (start_time BETWEEN '14:30:00' AND '16:45:00' , 2 , 3)) as timeofday_id,\
+---                          IF (start_time < '14:30:00', 'midday' , IF (start_time BETWEEN '14:30:00' AND '16:45:00' , 'afternoon' , 'evening' )) as timeofday\
+---             FROM `thesisprojects2019.audeMS.stadia_event`)\
+--- WHERE event != 'MTV EMAs'\
+\
+\
+------------------------------------------------------------------------------------------------------------------------------------------------------------\
+--------------------------------------------  CLASSIFICATION SPECTATORS EVENT  --------------------------------------------------\
+------------------------------------------------------------------------------------------------------------------------------------------------------------\
+\
+-------------------- MERGE SPECTATORS WITH HOME LOCATION\
+-- CREATE TABLE `thesisprojects2019.audeMS.prediction_spectators_table0` AS\
+-- \
+-- SELECT a.user_id, IF (region_id = 0, 4, IF (region_id = -1 AND lat IS NOT NULL, 5, IF (region_id IS NULL , -1, region_id ))) as home_region_id,  \
+--              IF (region_name = 'non_gb', 'international', IF (region_name IS NULL , 'undefined', region_name)) as home_region_name,\
+--              IF(district_id IS NULL, '-1', IF (district_id = '-1', '5', district_id)) as district_id, \
+--              IF(district_name IS NULL, 'undefined',  IF(district_name = 'non_gb', 'international', district_name)) as district_name, b.*                      \
+-- FROM `thesisprojects2019.audeMS.step3_homelocation_spectators_allgeoid` as a, \
+--            `thesisprojects2019.audeMS.stadia_event_classification` as b\
+-- WHERE a.eventid = b.eventid\
+-- ORDER BY user_id\
+\
+--- ADD HOME LOCATION ENGLAND (1), WALES (2), SCOTLAND (3), LONDON (4), INTERNATIONAL (5), UNDEFINED (-1)\
+--- ADD START LOCATION DEFINED ? YES HOME (1) - NO OTHER (2) - UNDEFINED (-1)\
+--- ADD START LOCATION ENGLAND (1), WALES (2), SCOTLAND (3), LONDON (4), INTERNATIONAL (5), UNDEFINED (-1)\
+\
+\
+-------------------- ADD NUMBER OF ATTENDANCE-------------------- \
+-------------------- -------------------- -------------------- -------------------- ------\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.prediction_spectators_table1` AS\
+-- --  \
+-- SELECT a.*, b.attendance, IF (attendance = 1, 1, 2) as repeat_spectators_id, IF (attendance = 1, 'non_repeat', 'repeat') as repeat_spectators\
+-- FROM `thesisprojects2019.audeMS.prediction_spectators_table0` as a\
+-- LEFT JOIN (\
+--                   SELECT user_id, count(user_id) as attendance\
+--                   FROM `thesisprojects2019.audeMS.prediction_spectators_table0` \
+--                   GROUP BY user_id ) as b\
+-- ON a.user_id = b.user_id \
+-- ORDER BY user_id\
+\
+\
+-------------------- ADD START LOCATION -------------------- \
+-------------------- -------------------- -------------------- -------------\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.prediction_spectators_table2` AS\
+--  \
+-- SELECT a.*,  IF (start_gb = 1 AND b.region_id = 0, 4, IF (start_gb = 0 AND b.region_id = -1, 5, b.region_id)) as start_region_id, \
+--              IF (start_gb = 0 AND b.region_name = 'not_gb', 'international', IF (start_gb = -1 AND b.region_name = '-1', 'undefined', b.region_name)) as start_region\
+-- FROM `thesisprojects2019.audeMS.prediction_spectators_table1` as a, \
+--            `thesisprojects2019.audeMS.step8_startlocation_spectators_allgeoid` as b\
+-- WHERE a.eventid = b.eventid\
+-- AND a.user_id = b.user_id\
+-- ORDER BY user_id\
+\
+\
+-------------------- ADD IS START HOME LOCATION -------------------- \
+-------------------- -------------------- -------------------- -------------------- -------\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.prediction_spectators_table3` AS\
+-- \
+-- SELECT a.*, IF(b.home = 0, 2, home) as home_id, IF(b.home = 1, 'start_home', IF (b.home = 0, 'start_not_home', 'undefined')) as home\
+-- FROM `thesisprojects2019.audeMS.prediction_spectators_table2` as a,\
+--            `thesisprojects2019.audeMS.step8_startlocation_spectators_final` as b\
+-- WHERE a.user_id = b.user_id AND a.eventid = b.eventid\
+-- ORDER BY user_id\
+\
+\
+-------------------- ADD ACORN CATEGORY, ACORN GROUP, ACORN TYPE -------------------- \
+-------------------- -------------------- -------------------- -------------------- -------------------- -------------------- \
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.prediction_spectators_table4` AS\
+-- \
+-- SELECT a.*, IF (b.postcode IS NULL, 'undefined', b.postcode) as postcode, \
+--                   IF (b.acorn_category IS NULL, -1, b.acorn_category) as acorn_category, \
+--                   IF (b.acorn_group IS NULL, 'undefined', b.acorn_group) as acorn_group, \
+--                   IF (b.acorn_type IS NULL, -1, b.acorn_type) as acorn_type\
+-- FROM  `thesisprojects2019.audeMS.prediction_spectators_table3` as a\
+-- FULL JOIN  `thesisprojects2019.audeMS.acorn_spectators`as b\
+-- ON a.user_id = b.user_id AND a.eventid = b.eventid\
+-- ORDER BY user_id  \
+\
+\
+-------------------- GOOGLE API - TIME & DISTANCE TRAVEL ------------------- \
+-------------------- -------------------- -------------------- -------------------- --------------------\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.prediction_spectators_table5` AS\
+-- \
+-- SELECT a.*, b.transit_dist_km, b.transit_time_min, b.driving_dist_km, driving_time_min\
+-- FROM `thesisprojects2019.audeMS.prediction_spectators_table4`as a\
+-- FULL OUTER JOIN (\
+--                                  SELECT IF (timeofday_id = 0, 1, IF(timeofday_id = 1, 2, 3)) as timeofday_id, \
+--                                               IF (weekend_day = 0, 2, weekend_day) as weekend_day, b.postcode, b.venueid,\
+--                                               b.transit_dist_km, b.transit_time_min, b.driving_dist_km, driving_time_min\
+--                                   FROM `thesisprojects2019.audeMS.GoogleAPI_Travel`as b ) as b\
+-- ON a.venueid = b.venueid\
+-- AND a.postcode = b.postcode\
+-- AND a.timeofday_id = b.timeofday_id\
+-- AND a.weekend_day_id = b.weekend_day\
+\
+\
+-------------------- ADD DWELLING TIME IN STADIUM  -------------------- \
+-------------------- -------------------- -------------------- -------------------- -----------\
+\
+CREATE TABLE `thesisprojects2019.audeMS.prediction_spectators_final` AS\
+\
+SELECT a.*, b.max_dwelltime_min, b.min_dwelltime_min, b.avg_dwelltime_min\
+FROM `thesisprojects2019.audeMS.prediction_spectators_table5` as a, \
+           `thesisprojects2019.audeMS.event_spectators_list_final_area` as b\
+WHERE a.venueid = b.venueid\
+AND a.eventid = b.eventid\
+AND a.event = b.event\
+AND a.user_id = b.user_id\
+ORDER BY user_id\
+}

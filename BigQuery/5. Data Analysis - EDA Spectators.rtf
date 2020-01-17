@@ -1,0 +1,174 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1671\cocoasubrtf600
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww10800\viewh8400\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 -----------------------------------------------------------------------------------------------------------------------------------------------------\
+--------------------------------------------\'96\'96\'96- STATISTICS EVENT SPECTATORS  -----------------------------------------\'96\'96----\
+------------------------------------------------------------------------------------------------------------------------------------------------------\
+\
+CREATE TABLE `thesisprojects2019.audeMS.EDA_homelocation_temporary` AS \
+ -- -- Step 6: Calculate number of home location spectators - Undefined\
+ SELECT l.*, COUNT(distinct e.user_id) as count_home_undefined, \
+                   ROUND(((COUNT(distinct e.user_id)/l.count_spectators)*100),2) as perc_home_undefined\
+ FROM (\
+ \
+              -- Step 5: Calculate number of home location spectators - International \
+               SELECT l.*, COUNT(distinct e.user_id) as count_home_international, \
+                                 ROUND(((COUNT(distinct e.user_id)/l.count_spectators)*100),2) as perc_home_international\
+               FROM (\
+               \
+                                -- Step 4: Calculate number of home location spectators - UK\
+                                 SELECT l.*, COUNT(distinct e.user_id) as count_home_GB, \
+                                                   ROUND(((COUNT(distinct e.user_id)/l.count_spectators)*100),2) as perc_home_GB\
+                                 FROM (\
+                                 \
+                                            -- Step 3: Calculate number of home location spectators - London\
+                                              SELECT d.*, COUNT(distinct e.user_id) as count_home_lnd, \
+                                                                 ROUND((COUNT(distinct e.user_id)/d.count_spectators)*100,2) as perc_home_lnd\
+                                              FROM ( \
+  \
+                                                              -- Step 2: Calculate number of home spectators for each events\
+                                                              SELECT a.venueid, a.eventid, b.event, b.attendance, b.count_spectators, b.perc_spectators, \
+                                                                           COUNT(distinct user_id) as count_home, \
+                                                                           ROUND((COUNT(distinct user_id)/b.count_spectators)*100,2) as perc_home\
+                                                              \
+                                                              FROM `thesisprojects2019.audeMS.step3_homelocation_spectators_allgeoid` as a, \
+                                                                           \
+                                                                           -- Step 1: Calculate number of gps spectators for each events\
+                                                                             ( SELECT a.venueid, a.eventid, a.event, b.attendance, \
+                                                                                           COUNT (DISTINCT user_id) as count_spectators, \
+                                                                                           ROUND((COUNT(DISTINCT user_id)/b.attendance)*100,2) as perc_spectators\
+                                                                             FROM `thesisprojects2019.audeMS.event_spectators_trajectories_final_area` as a \
+                                                                             LEFT JOIN `thesisprojects2019.audeMS.stadia_event`as b\
+                                                                             ON a.eventid = b.eventid\
+                                                                             GROUP BY venueid, eventid, event, attendance ) as b\
+                                                                             \
+                                                                WHERE lon IS NOT NULL\
+                                                                AND a.eventid = b.eventid\
+                                                                GROUP BY a.venueid, a.eventid, b.event, b.attendance, b.count_spectators, b.perc_spectators ) as d  -- End Step 2\
+  \
+                                                             LEFT JOIN `thesisprojects2019.audeMS.step3_homelocation_spectators_allgeoid` as e\
+                                                  \
+                                                  ON d.eventid = e.eventid \
+                                                  AND e.ward_id IS NOT NULL AND e.ward_id != 'GB' AND e.ward_id  != '-1'\
+                                                  GROUP BY d.venueid, d.eventid, d.event, d.attendance, d.count_spectators, d.perc_spectators, \
+                                                                   d.count_home, d.perc_home) as l -- End Step 3\
+                                                 \
+                                                 \
+                                                 LEFT JOIN `thesisprojects2019.audeMS.step3_homelocation_spectators_allgeoid` as e\
+                                                                          \
+                                 ON l.eventid = e.eventid\
+                                 AND e.ward_id = 'GB' \
+                                 GROUP BY l.venueid, l.eventid, l.event, l.attendance, l.count_spectators, l.perc_spectators, l.count_home, l.perc_home,                                                                                                                   l.count_home_lnd, l.perc_home_lnd ) as l -- End Step 4\
+                                 \
+                                  \
+                                  LEFT JOIN `thesisprojects2019.audeMS.step3_homelocation_spectators_allgeoid` as e \
+                                  \
+               ON l.eventid = e.eventid \
+               AND e.ward_id = '-1' \
+               GROUP BY l.venueid, l.eventid, l.event, l.attendance, l.count_spectators, l.perc_spectators, l.count_home, l.perc_home,                                                                                          l.count_home_lnd, l.perc_home_lnd, l.count_home_GB, l.perc_home_GB ) as l \
+               -- End Step 5\
+               \
+               \
+               LEFT JOIN `thesisprojects2019.audeMS.step3_homelocation_spectators_allgeoid` as e\
+  \
+  ON l.eventid = e.eventid AND e.lat IS NULL\
+  GROUP BY l.venueid, l.eventid, l.event, l.attendance, l.count_spectators, l.perc_spectators, l.count_home, l.perc_home, l.count_home_lnd, l.perc_home_lnd, l.count_home_GB, l.perc_home_GB, l.count_home_international, l.perc_home_international \
+ -- --) as l -- End Step 6\
+ORDER BY eventid\
+\
+\
+-----------------------------------------------------------------------------------------------------------------------------------------------------\
+--------------------------------------------\'96\'96\'96- STATISTICS EVENT SPECTATORS  -----------------------------------------\'96\'96--\
+-------------------------------------------\'96--------- Morning, Evening Homelocation -------------------------------------------\'96\'96----\
+-----------------------------------------------------------------------------------------------------------------------------------------------------\
+\
+--CREATE TABLE `thesisprojects2019.audeMS.step5_table1_spectators_fromhome_area` AS\
+------ Morning Start at home location - Or Last Time at Homelocation !\
+-- SELECT b.venueid, b.eventid, b.event, b.user_id, b.datetime as lastime_athome\
+-- FROM (\
+-- SELECT ROW_NUMBER() OVER (PARTITION BY a.eventid, a.user_id ORDER BY a.datetime DESC) as rankfirst, a.*\
+-- FROM (\
+--             -- Filter by distance from homelocation (less than 200m)\
+--             SELECT a.*\
+--             FROM ( \
+--                         -- Calculate distance from homelocation\
+--                         SELECT a.venueid, a.eventid, a.event, a.user_id, a.datetime, st_geogpoint(a.lon, a.lat) as point_geo, b.home_geo, ST_DISTANCE(st_geogpoint(a.lon, a.lat), st_geogpoint(b.lon, b.lat)) as dist_from_home\
+--                         FROM (\
+--                                      -- Filter by time \
+--                                       SELECT *\
+--                                       FROM `thesisprojects2019.audeMS.event_spectators_trajectories_final_area`\
+--                                       WHERE cast(datetime as time) \
+--                                       BETWEEN '00:00:00' AND '12:00:00' ) as a  \
+--                                    -- End\
+--                         LEFT JOIN `thesisprojects2019.audeMS.step2_table4_home_spectators_area` as b \
+--                         ON a.user_id = b.user_id \
+--                         ORDER BY user_id ) as a\
+--                         -- End\
+--             WHERE dist_from_home < 200 ) as a \
+--                ORDER BY user_id, eventid, datetime) as b\
+--             -- End\
+-- WHERE rankfirst = 1            \
+-- ORDER BY user_id, eventid\
+\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step5_table2_spectators_tohome_area` AS\
+-- -- Evening End at home location\
+-- SELECT b.venueid, b.eventid, b.event, b.user_id, b.datetime as firsttime_backhome\
+-- FROM (\
+-- SELECT ROW_NUMBER() OVER (PARTITION BY a.eventid, a.user_id, a.event ORDER BY a.datetime ASC) as rankfirst, a.*\
+-- FROM (\
+--             -- Filter by distance from homelocation (less than 200m)\
+--             SELECT a.*\
+--             FROM ( \
+--                         -- Calculate distance from homelocation\
+--                         SELECT a.venueid, a.eventid, a.event, a.user_id, a.datetime, st_geogpoint(a.lon, a.lat) as point_geo, b.home_geo, ST_DISTANCE(st_geogpoint(a.lon, a.lat), st_geogpoint(b.lon, b.lat)) as dist_from_home\
+--                         FROM (\
+--                                      -- Filter by time \
+--                                       SELECT *\
+--                                       FROM `thesisprojects2019.audeMS.event_spectators_trajectories_final_area`\
+--                                       WHERE cast(datetime as time) \
+--                                       BETWEEN '20:00:00' AND '23:59:59' ) as a  \
+--                                    -- End\
+--                         LEFT JOIN `thesisprojects2019.audeMS.step2_table4_home_spectators_area` as b \
+--                         ON a.user_id = b.user_id \
+--                         ORDER BY user_id ) as a\
+--                          -- End\
+--              WHERE dist_from_home < 200 \
+--              ORDER BY user_id, eventid, datetime) as a ) as b\
+--              -- End\
+-- WHERE rankfirst = 1            \
+-- ORDER BY user_id, eventid\
+\
+ ------------------------------------------------------------------------------------------------------------------------------------------------------\
+--------------------------------------------\'96\'96\'96- STATISTICS EVENT SPECTATORS  -----------------------------------------\'96\'96----\
+------------------------------------------------------------------------------------------------------------------------------------------------------\
+\
+--  CREATE TABLE `thesisprojects2019.audeMS.EDA_gpsspectators_homelocation_area` AS\
+\
+-- Step 2: Calculate number of spectators going to home \
+-- SELECT l.*, COUNT(distinct c.user_id) as count_spectators_tohome,\
+--                  ROUND((COUNT(distinct c.user_id)/l.count_spectators_home)*100,2) as perc_spectators_tohome\
+-- FROM (\
+--            -- Step 1: Calculate number of spectators coming from home \
+--            SELECT l.*, COUNT(distinct c.user_id) as count_spectators_fromhome,\
+--                              ROUND((COUNT(distinct c.user_id)/l.count_spectators_home)*100,2) as perc_spectators_fromhome\
+--            FROM `thesisprojects2019.audeMS.step5_table1_spectators_fromhome_area` as c \
+--            LEFT JOIN `thesisprojects2019.audeMS.EDA_gpsspectators_homelocation_temporary_area` as l                    \
+--            ON l.eventid = c.eventid \
+--            GROUP BY l.venueid, l.eventid, l.event, l.attendance, l.count_spectators, l.perc_spectators, l.count_spectators_home, l.perc_spectators_home,\
+--            l.count_spectators_home_lnd,l.perc_spectators_home_lnd, l.count_spectators_home_uk, l.perc_spectators_home_uk, l.count_spectators_home_international, \
+--            l.perc_spectators_home_international, l.count_spectators_home_undefined,l.perc_spectators_home_undefined\
+--            ORDER BY l.eventid ) as l -- END Step 1 \
+--              \
+--            LEFT JOIN `thesisprojects2019.audeMS.step5_table2_spectators_tohome_area` as c\
+--                            \
+-- ON l.eventid = c.eventid   \
+-- GROUP BY l.venueid, l.eventid, l.event, l.attendance, l.count_spectators, l.perc_spectators, l.count_spectators_home, l.perc_spectators_home,\
+--            l.count_spectators_home_lnd,l.perc_spectators_home_lnd, l.count_spectators_home_uk, l.perc_spectators_home_uk, l.count_spectators_home_international, \
+--            l.perc_spectators_home_international, l.count_spectators_home_undefined,l.perc_spectators_home_undefined, l.count_spectators_fromhome, l.perc_spectators_fromhome\
+-- ORDER BY l.eventid                  \
+}

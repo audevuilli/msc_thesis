@@ -1,0 +1,241 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1671\cocoasubrtf600
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww20540\viewh10040\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 ------------------------------------------------------------------------------------------------------------------------------------------------------\
+--------------------------------------- SPECTATORS IN STADIUM CLEANING    -------------------------------------------------\
+------------------------------------------------------------------------------------------------------------------------------------------------------\
+-- STEP 1: Select all the trajectories at day of event!\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step1_table1_spectators_trajectories_ateventday` AS\
+-- --- Select only the gps_trajectories that are recorded on event days. \
+-- SELECT a.*\
+-- -- GPS data table\
+-- FROM `thesisprojects2019.raw_data.stadia_gps_events` as a \
+-- -- Join gps data with events data table \
+-- JOIN `thesisprojects2019.audeMS.stadia_event` as b \
+-- -- On event day\
+-- ON cast(a.datetime As date) = b.date_dt\
+\
+\
+-- STEP 2A: Temporary selection table - All users trajectories outside match hours\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step1_table2a_spects_trajectories_ateventday_outsidematchtime` AS\
+-- SELECT *\
+-- FROM (\
+--               SELECT b.eventid, a.*, b.starttime_h4, b.endtime_h2\
+--               FROM ( \
+--                            -- Select 3hours before match, 2hours after match\
+--                            SELECT venueid, eventid, date_dt, start_time, end_time, \
+--                                         TIME_SUB(start_time, INTERVAL 4 HOUR) AS starttime_h4, \
+--                                         TIME_ADD(end_time, INTERVAL 2 HOUR) AS endtime_h2\
+--                            FROM  `thesisprojects2019.audeMS.stadia_event`) as b,\
+--                            `thesisprojects2019.audeMS.step1_table1_spectators_trajectories_ateventday`as a\
+--               WHERE  a.venueid = b.venueid\
+--               AND cast(a.datetime as date) = b.date_dt ) as a \
+-- WHERE  cast(a.datetime as time) < starttime_h4 OR cast(a.datetime as time) > endtime_h2     \
+\
+\
+-- STEP 2B: Temporary selection table - All users trajectories outside match hours instadium\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step1_table2b_eventspectators_trajectories_beforeafterevent_instadiumarea` AS \
+-- SELECT  a.*\
+-- FROM `thesisprojects2019.audeMS.step1_table2a_spects_trajectories_ateventday_outsidematchtime` as a\
+-- JOIN `thesisprojects2019.audeMS.stadia_boundingbox_small` as b\
+-- ON st_within(st_geogpoint(lon, lat), st_geogfromtext(b.geom))\
+-- ORDER BY user_id, datetime\
+\
+-- STEP 3 Table for all spectatorsevent trajectories in stadium at time of match!\
+-- CREATE TABLE `thesisprojects2019.audeMS.step1_table3_eventspectators_instadiumarea_duringevent` AS\
+-- SELECT DISTINCT t.*\
+-- -- GPS data table and Stadia Event (get the GPS location of users and stadium)\
+-- FROM (    \
+--           SELECT DISTINCT  b.eventid, a.*\
+--              -- GPS data table and Stadia Event (get the time of each event)\
+--              FROM `thesisprojects2019.audeMS.step1_table1_spectators_trajectories_ateventday` as a,\
+--                        `thesisprojects2019.audeMS.stadia_event` as b\
+--              WHERE a.venueid = b.venueid\
+--              AND cast(a.datetime as date) = b.date_dt\
+--              AND cast(a.datetime as time) BETWEEN b.start_time AND b.end_time \
+--              ORDER BY eventid, user_id ) t\
+-- JOIN `thesisprojects2019.audeMS.stadia_boundingbox_small` as b\
+-- -- Make the selection on GPS point location within stadium \
+-- ON st_within(st_geogpoint(t.lon, t.lat), st_geogfromtext(b.geom))\
+-- ORDER BY eventid, user_id\
+\
+--STEP 4 Spectators for user notinstadium before, after event and instadium at eventtime. \
+-- CREATE TABLE `thesisprojects2019.audeMS.step1_table4_spectatorsonly_area` AS\
+-- SELECT DISTINCT a.venueid, a.eventid, a.datetime, a.user_id\
+-- FROM  `thesisprojects2019.audeMS.step1_table3_eventspectators_instadiumarea_duringevent`as a\
+-- LEFT JOIN `thesisprojects2019.audeMS.step1_table2b_eventspectators_trajectories_beforeafterevent_instadiumarea`as b\
+-- ON a.user_id = b.user_id\
+-- AND a.eventid = b.eventid\
+-- WHERE b.user_id IS NULL\
+\
+-- STEP 5 Spectators Trajectories for user notinstadium before, after event and instadium at eventtime. \
+-- CREATE TABLE `thesisprojects2019.audeMS.step1_table5_spectators_trajectories_area` AS\
+-- SELECT DISTINCT b.eventid, a.*\
+-- FROM `thesisprojects2019.audeMS.step1_table1_spectators_trajectories_ateventday` as a\
+-- INNER JOIN `thesisprojects2019.audeMS.step1_table4_spectatorsonly_area` as b\
+-- ON a.user_id = b.user_id\
+-- WHERE cast(a.datetime as date) = cast(b.datetime as date) \
+-- AND b.venueid = a.venueid\
+-- ORDER BY a.user_id, datetime\
+\
+------------------------------------------------------------------------------------------------------------------------------------------------------\
+--------------------------------------- SPECTATORS TRAJECTORIES CLEANING -----------------------------------------------\
+------------------------------------------------------------------------------------------------------------------------------------------------------\
+\
+-- STEP 1: PREPROCESSING STEPS - COMPUTE TIME,DISTANCE-DIFFERENCE, - SPEED!\
+\
+-- STEP 1A: Calculate the point geometry --\
+-- CREATE TABLE `thesisprojects2019.audeMS.table3_gps_spectators_trajectories_ateventday_cleaning_table0` AS\
+-- SELECT *, ST_GEOGPOINT(lon, lat) as point_geo\
+-- FROM `thesisprojects2019.audeMS.step1_table5_spectators_trajectories_area`\
+-- ORDER BY user_id, datetime\
+\
+-- STEP 1B: TIME DIFFERENCE\
+-- CREATE TABLE `thesisprojects2019.audeMS.table3_gps_spectators_trajectories_ateventday_cleaning_table1` AS\
+-- SELECT eventid, venueid, datetime, user_id, lat,lon, point_geo, horizontal_accuracy, \
+-- TIMESTAMP_DIFF(datetime, prev_rec_datetime, SECOND) AS timelag_fromprev\
+-- FROM (\
+--              SELECT *, LAG(datetime) OVER( PARTITION BY user_id,eventid ORDER BY datetime ASC) prev_rec_datetime\
+--              FROM `thesisprojects2019.audeMS.table3_gps_spectators_trajectories_ateventday_cleaning_table0` )\
+-- ORDER BY user_id, datetime  \
+\
+-- STEP 1C: DISTANCE DIFFERENCE (in meter)\
+-- CREATE TABLE `thesisprojects2019.audeMS.table3_gps_spectators_trajectories_ateventday_cleaning_table2` AS\
+-- SELECT eventid, venueid, datetime, user_id, lat, lon, horizontal_accuracy, point_geo, timelag_fromprev, ST_DISTANCE(point_geo, prev_rec) AS distlag_fromprev\
+-- FROM (\
+--             SELECT *,  LAG(point_geo) OVER(PARTITION BY user_id,eventid ORDER BY datetime ASC) prev_rec \
+--             FROM `thesisprojects2019.audeMS.table3_gps_spectators_trajectories_ateventday_cleaning_table1` )\
+-- ORDER BY user_id, datetime         \
+\
+-- STEP 1D: COMPUTE SPEED (DISTANCE / TIME) -- safe_divide allows for division by 0 --\
+--UPDATE  `thesisprojects2019.audeMS.table3_gps_spectators_trajectories_ateventday_cleaning_table2`\
+--SET speed_fromprev = SAFE_DIVIDE(distlag_fromprev,timelag_fromprev)\
+--WHERE\
+--TRUE\
+\
+-- STEP 2: CLEANING STEPS - REMOVE POINTS WITH A SPEED > 60m/s!\
+\
+-- STEP 2A: Remove row where speed is more than 60 m/s\
+-- CREATE TABLE `thesisprojects2019.audeMS.step1_table6a_spectators_trajectories_temporary_speed_area` AS\
+-- SELECT venueid, eventid, user_id, datetime, lat, lon, point_geo, horizontal_accuracy, timelag_fromprev, distlag_fromprev, speed_fromprev as speed_fromprev\
+-- FROM `thesisprojects2019.audeMS.table3_gps_spectators_trajectories_ateventday_cleaning_table2`\
+-- WHERE speed_fromprev < 60.0\
+-- ORDER BY user_id, datetime\
+\
+-- STEP 2B: Remove users that have less than 4 gps points in their trajectories.\
+-- CREATE TABLE `thesisprojects2019.audeMS.step1_table6b_spectators_trajectories_temporary_points_area` AS\
+-- SELECT DISTINCT a.venueid, a.eventid, b.user_id, a.datetime, a.lon, a.lat, a.horizontal_accuracy, a.timelag_fromprev, a.distlag_fromprev, a.speed_fromprev\
+-- FROM (\
+--               SELECT user_id, count_nbpts_trajectories\
+--               FROM (\
+--                             SELECT COUNT(datetime) as count_nbpts_trajectories, user_id, eventid\
+--                             FROM `thesisprojects2019.audeMS.step1_table6a_spectators_trajectories_temporary_speed_area` \
+--                             GROUP BY user_id, eventid ) \
+--               WHERE count_nbpts_trajectories > 3 ) as b,\
+--               `thesisprojects2019.audeMS.step1_table6a_spectators_trajectories_temporary_speed_area` as a\
+-- WHERE b.user_id = a.user_id\
+-- ORDER BY user_id, datetime\
+\
+------------------------------------------------------------------------------------------------------------------------------------------------------\
+--------------------------------------- SPECTATORS DWELLING TIME CLEANING ---------------------------------------------\
+------------------------------------------------------------------------------------------------------------------------------------------------------\
+\
+-- STEP 1: GET THE FIRST, LAST POINT IN STADIUM ARENA! \
+\
+-- STEP 1A: GET THE PREVIOUS, NEXT POINT OF USERS TRAJECTORIES\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step4_table0_gpspt_previousnext_point_temporary0_area` AS\
+-- SELECT a.venueid, a.eventid, a.user_id, a.datetime, \
+--              LAG(a.datetime) OVER(PARTITION BY a.user_id, a.eventid ORDER BY a.datetime ASC) prev_datetime, a.next_datetime, lat, lon,  -- Next Time point is made\
+--              LAG(st_geogpoint(lon, lat)) OVER(PARTITION BY a.user_id, a.eventid ORDER BY a.datetime ASC) prev_pointgeo, a.next_pointgeo, -- Next Location point is made\
+--              TIMESTAMP_DIFF(a.datetime, LAG(a.datetime) OVER( PARTITION BY a.user_id, a.eventid ORDER BY a.datetime ASC), SECOND) diff_time_prev, diff_time_next, \
+--              ST_DISTANCE(LAG(st_geogpoint(lon, lat)) OVER(PARTITION BY a.user_id, a.eventid ORDER BY a.datetime ASC), st_geogpoint(lon, lat)) diff_dist_prev, diff_dist_next \
+-- FROM (SELECT venueid, eventid, user_id, datetime, \
+--                            LEAD(datetime) OVER(PARTITION BY user_id,eventid ORDER BY datetime ASC) next_datetime, lat, lon,  -- Next Time point is made\
+--                            LEAD(st_geogpoint(lon, lat)) OVER(PARTITION BY user_id,eventid ORDER BY datetime ASC) next_pointgeo, -- Next Location point is made\
+--                            TIMESTAMP_DIFF(LEAD(datetime) OVER( PARTITION BY user_id,eventid ORDER BY datetime ASC),datetime, SECOND) diff_time_next, -- Time difference \
+--                            ST_DISTANCE(st_geogpoint(lon, lat), LEAD(st_geogpoint(lon, lat)) OVER(PARTITION BY user_id,eventid ORDER BY datetime ASC)) diff_dist_next -- Distance Difference \
+--              FROM `thesisprojects2019.audeMS.step1_table6b_spectators_trajectories_temporary_points_area` ) as a\
+-- ORDER BY user_id, datetime\
+\
+\
+-- STEP 1B: SELECT THE POINT FALLING INSIDE STADIUM \
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step4_table1_gpspt_duringmatchtime_temporary1_area` AS\
+-- SELECT a.*\
+-- FROM `thesisprojects2019.audeMS.step4_table0_gpspt_previousnext_point_temporary0_area` as a,\
+--           `thesisprojects2019.audeMS.stadia_event` as b\
+-- WHERE  a.eventid = b.eventid \
+-- AND cast(a.datetime as time) BETWEEN b.start_time AND b.end_time\
+-- ORDER BY user_id, datetime\
+\
+-- STEP 1C: RANK THE POINT FALLING INSIDE STADIUM - SELECT THE FIRST / LAST ONE!\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step4_table2_1st_last_gpspt_instadium_temporary2_area` AS\
+-- SELECT ranktable.*\
+-- FROM ( \
+--             -- Order by rank (desc. last point in stadium / ascendant frist point in stadium\
+--             SELECT ROW_NUMBER() OVER (PARTITION BY a.eventid, a.user_id ORDER BY a.datetime ASC) as rankfirst,\
+--                          ROW_NUMBER() OVER (PARTITION BY a.eventid, a.user_id ORDER BY a.datetime DESC) as ranklast, a.*\
+--             FROM `thesisprojects2019.audeMS.step4_table1_gpspt_duringmatchtime_temporary1_area` as a ) as ranktable                                               \
+-- WHERE rankfirst =1 OR ranklast = 1\
+-- ORDER BY user_id, datetime\
+\
+-- STEP 2A: Prepare the table to calculate the dwelling time!\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step4_table3_predwellingtime_temporary3_area` AS\
+-- SELECT b.eventid, b.user_id, a.pt1_datetime, a.pt2_datetime, b.datetime as pt3_datetime, b.next_datetime as pt4_datetime, a.pt1_geo, a.pt2_geo, st_geogpoint(b.lon, b.lat) as pt3_geo, b.next_pointgeo as pt4_geo\
+-- FROM (\
+--             SELECT eventid, user_id, datetime as pt2_datetime, prev_datetime as pt1_datetime, st_geogpoint(lon, lat) as pt2_geo, prev_pointgeo as pt1_geo\
+--             FROM `thesisprojects2019.audeMS.step4_table2_1st_last_gpspt_instadium_temporary2_area`\
+--             WHERE rankfirst = 1 ) as a , \
+--             `thesisprojects2019.audeMS.step4_table2_1st_last_gpspt_instadium_temporary2_area` as b\
+-- WHERE ranklast = 1\
+-- AND a.eventid = b.eventid\
+-- AND a.user_id = b.user_id\
+-- ORDER BY b.user_id   \
+\
+-- STEP 2B: Calculate the Dwelling Time. Maximum and Minimum Dwelling time - Time Difference! \
+-- KEEP ONLY SEPCTATORS WITH AVEG_DWELLTIME > 1HOUR\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step4_table4_dwellingtime_temporary4_area` as\
+-- SELECT b.*\
+-- FROM (\
+--              SELECT  *, (max_dwelltime_min + min_dwelltime_min)/2 as avg_dwelltime_min\
+--              FROM ( -- Calculate the Maximum, Minimum Dwelltime \
+--                          SELECT a.*, TIMESTAMP_DIFF(a.pt4_datetime, a.pt1_datetime, MINUTE) AS max_dwelltime_min, \
+--                                             TIMESTAMP_DIFF(a.pt3_datetime, a.pt2_datetime, MINUTE) AS min_dwelltime_min\
+--                          FROM `thesisprojects2019.audeMS.step4_table3_predwellingtime_temporary3_area` as a ) \
+--               WHERE pt1_datetime IS NOT NULL OR pt4_datetime IS NOT NULL ) as b \
+-- WHERE avg_dwelltime_min > 45    \
+\
+------------------------------------------------------------------------------------------------------------------------------------------------------\
+---------------------------------- FINAL SPECTATORS LIST AND TRAJECTORIES  ------------------------------------------\
+------------------------------------------------------------------------------------------------------------------------------------------------------\
+\
+-- STEP 1: CREATE FINAL SPECTATORS LIST (with venueid, eventid, event and user_id)\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.event_spectators_list_final_area` AS\
+-- SELECT b.venueid, a.eventid, b.event, a.user_id, a.max_dwelltime_min, a.min_dwelltime_min, a.avg_dwelltime_min\
+-- FROM `thesisprojects2019.audeMS.step4_table4_dwellingtime_temporary4_area` as a\
+-- LEFT JOIN `thesisprojects2019.audeMS.stadia_event` as b\
+-- ON a.eventid = b.eventid\
+-- ORDER BY user_id, eventid\
+\
+\
+--STEP 2: CREATE FINAL SPECTATORS TRAJECTORIES TABLE (with venueid, eventid, event and user_id)\
+-- CREATE TABLE `thesisprojects2019.audeMS.event_spectators_trajectories_final_area` AS\
+-- SELECT a.venueid, a.eventid, a.event, a.user_id, b.datetime, b.lon, b.lat, b.horizontal_accuracy, b.timelag_fromprev, b.distlag_fromprev, b.speed_fromprev\
+-- FROM `thesisprojects2019.audeMS.event_spectators_list_final_area` as a\
+-- LEFT JOIN `thesisprojects2019.audeMS.step1_table6b_spectators_trajectories_temporary_points_area` as b\
+-- ON a.eventid = b.eventid AND a.user_id = b.user_id\
+-- ORDER BY a.user_id, datetime\
+\
+}

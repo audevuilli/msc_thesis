@@ -1,0 +1,140 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1671\cocoasubrtf600
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww19960\viewh8680\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 -----------------------------------------------------------------\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 --- GET LAST GPS POINT IN STADIUM !!! ---\
+-----------------------------------------------------------------\
+\
+-- STEP 1A: Get the point after the first one!\
+-- CREATE TABLE `thesisprojects2019.audeMS.step9_temporal_analysis_arrival_table0` AS\
+-- SELECT venueid, eventid, user_id, datetime, \
+--               LEAD(datetime) OVER(PARTITION BY user_id,eventid ORDER BY datetime ASC) next_datetime, lat, lon,  -- Next Time point is made\
+--               LEAD(lon) OVER(PARTITION BY user_id,eventid ORDER BY datetime ASC) next_lon, -- Next Location point is made\
+--               LEAD(lat) OVER(PARTITION BY user_id,eventid ORDER BY datetime ASC) next_lat,\
+--               TIMESTAMP_DIFF(LEAD(datetime) OVER( PARTITION BY user_id,eventid ORDER BY datetime ASC),datetime, SECOND) diff_time_next -- Time difference (time of next point)         \
+-- FROM `thesisprojects2019.audeMS.event_spectators_trajectories_final_area` \
+\
+-- STEP 1B: Temporary selection table - All users trajectories 4hours before match, 2hours after match.\
+-- CREATE TABLE `thesisprojects2019.audeMS.step9_temporal_analysis_arrival_table1` AS\
+-- SELECT  a.*, b.starttime_h4, b.endtime_h2\
+-- FROM ( -- Select 3hours before match, 2hours after match\
+--             SELECT venueid, eventid, date_dt, TIME_SUB(start_time, INTERVAL 4 HOUR) AS starttime_h4, TIME_ADD(end_time, INTERVAL 2 HOUR) AS endtime_h2\
+--             FROM  `thesisprojects2019.audeMS.stadia_event`) as b,\
+--             `thesisprojects2019.audeMS.step9_temporal_analysis_arrival_table0` as a\
+-- WHERE cast(a.datetime as time) > starttime_h4 AND cast(a.datetime as time) < endtime_h2\
+-- AND a.eventid = b.eventid    \
+-- AND cast(a.datetime as date) = b.date_dt\
+-- ORDER BY eventid, user_id \
+\
+\
+-- -- Step 1: Select the first point for each user inside the stadium arena - First Point of User GPS trajectories that fall within the stadium bounding box. \
+-- -- Step 2: Keep only the first values for each spectator (First point in stadium) \
+-- -- Step 3: Create Time Intervall - Rename each time in 5 minutes intervall \
+\
+-- STEP 2A: Temporary selection table - Rank Number\
+CREATE TABLE `thesisprojects2019.audeMS.step9_temporal_analysis_departure` AS\
+SELECT  tableunique.eventid, tableunique.datetime, tableunique.next_datetime, tableunique.user_id, tableunique.lat, tableunique.lon, \
+              tableunique.next_pt, tableunique.starttime_h4, tableunique.endtime_h2, tableunique.diff_time_next,  \
+              TIMESTAMP_SECONDS(300 *DIV(UNIX_SECONDS((CAST(datetime as timestamp))) + 150, 300))  as min_5_instadium, \
+              TIMESTAMP_SECONDS(300 *DIV(UNIX_SECONDS((CAST(next_datetime as timestamp))) + 150, 300))  as min_5_outstadium\
+FROM (SELECT tablerank.*\
+           FROM( \
+                        SELECT ROW_NUMBER() OVER (PARTITION BY tablenew.eventid, tablenew.user_id ORDER BY tablenew.datetime DESC) as rank, tablenew.*\
+                        FROM ( SELECT c.*\
+                                      FROM (\
+                                    -- Select point inside the stadium\
+                                                  SELECT a.venueid, a.eventid, a.user_id, a.datetime, a.next_datetime, \
+                                                               a.starttime_h4, a.endtime_h2, a.lat, a.lon, st_geogpoint(next_lon, next_lat) as next_pt, a.diff_time_next\
+                                                  FROM `thesisprojects2019.audeMS.step9_temporal_analysis_arrival_table1` as a                                                          \
+                                                  JOIN    `thesisprojects2019.audeMS.stadia_boundingbox` as b\
+                                                  -- Make the selection on GPS point location within stadium \
+                                                  ON st_within(st_geogpoint(a.next_lon, a.next_lat), st_geogfromtext(b.geom))) as  c, -- END Step 1\
+                                                   \
+                                                   `thesisprojects2019.audeMS.stadia_event` as d                      \
+                                      WHERE c.eventid = d.eventid ) as tablenew \
+                                     ) as tablerank\
+             WHERE rank =1) as tableunique            \
+ORDER BY eventid, user_id, next_datetime\
+\
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 -----------------------------------------------------------------\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 ---  GET FIRST GPS POINT IN STADIUM !!! ---\
+-----------------------------------------------------------------\
+\
+-- STEP 1A: Get the point before the first one!\
+-- CREATE TABLE `thesisprojects2019.audeMS.step4_gpspt_instadium_temporary0` AS\
+-- SELECT venueid, eventid, user_id, datetime, \
+--               LAG(datetime) OVER(PARTITION BY user_id,eventid ORDER BY datetime ASC) prev_datetime, lat, lon,  -- Next Time point is made\
+--               LAG(point_geo) OVER(PARTITION BY user_id,eventid ORDER BY datetime ASC) prev_pointgeo, -- Next Location point is made\
+--               TIMESTAMP_DIFF(datetime, LAG(datetime) OVER( PARTITION BY user_id,eventid ORDER BY datetime ASC), SECOND) diff_time_prev, -- Time difference (time of next point)\
+--               ST_DISTANCE(LAG(point_geo) OVER(PARTITION BY user_id,eventid ORDER BY datetime ASC),point_geo) diff_dist_prev -- Distance Difference (distance of next point)\
+-- FROM `thesisprojects2019.audeMS.step1_table6_spectators_trajectories` \
+\
+\
+-- STEP 1B: Temporary selection table - All users trajectories 4hours before match, 2hours after match.\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step4_gpspt_instadium_temporary1` AS\
+\
+-- SELECT  b.starttime_h3, b.endtime_h2, a.*\
+-- FROM ( \
+		-- Select 3hours before match, 2hours after match\
+--             SELECT venueid, eventid, date_dt, \
+			     TIME_SUB(start_time, INTERVAL 4 HOUR) AS starttime_h3, \
+			     TIME_ADD(end_time, INTERVAL 2 HOUR) AS endtime_h2\
+--             FROM  `thesisprojects2019.audeMS.stadia_event`) as b,\
+--             `thesisprojects2019.audeMS.step4_gpspt_instadium_temporary0` as a\
+\
+-- WHERE cast(a.datetime as time) > starttime_h3 AND cast(a.datetime as time) < endtime_h2\
+-- AND a.eventid = b.eventid    \
+-- AND cast(a.datetime as date) = b.date_dt\
+-- ORDER BY eventid, user_id \
+\
+\
+-- -- Step 1: Select the first point for each user inside the stadium arena - First Point of User GPS trajectories that fall within the stadium bounding box. \
+-- -- Step 2: Keep only the first values for each spectator (First point in stadium) \
+-- -- Step 3: Create Time Intervall - Rename each time in 5 minutes intervall \
+\
+-- STEP 2A: Temporary selection table - Rank Number\
+\
+-- CREATE TABLE `thesisprojects2019.audeMS.step4_table2_1gpspt_stadium` AS\
+-- SELECT  tableunique.eventid, tableunique.datetime, tableunique.prev_datetime, tableunique.user_id, tableunique.lat, \
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 		  tableunique.lon, tableunique.prev_pointgeo, tableunique.starttime_h3, tableunique.endtime_h2, tableunique.diff_time_prev, tableunique.diff_dist_prev, \
+		  TIMESTAMP_SECONDS(300 *DIV(UNIX_SECONDS((CAST(datetime as timestamp))) + 150, 300))  as min_5_instadium, \
+--		  TIMESTAMP_SECONDS(300 *DIV(UNIX_SECONDS((CAST(prev_datetime as timestamp))) + 150, 300))  as min_5_outstadium\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 -- FROM (\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 --	       SELECT tablerank.*\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 --             FROM( \
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 --			  SELECT ROW_NUMBER() OVER (PARTITION BY tablenew.eventid, tablenew.user_id ORDER BY tablenew.datetime) as rank, tablenew.*\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 --                         FROM ( \
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 --				        SELECT c.*, d.eventid as d_ventid\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 --                                       FROM (\
+--                                     -- Select point inside the stadium\
+--                                                   SELECT a.venueid, a.eventid, a.user_id, a.datetime, a.prev_datetime, a.starttime_h3, a.endtime_h2,\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 								a.lat, a.lon, a.prev_pointgeo, a.diff_time_prev, a.diff_dist_prev\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+\cf0 --                                                   FROM `thesisprojects2019.audeMS.step4_gpspt_instadium_temporary1` as a                                                          \
+--                                                   JOIN    `thesisprojects2019.audeMS.stadia_boundingbox` as b\
+--                                                   -- Make the selection on GPS point location within stadium \
+--                                                   ON st_within(st_geogpoint(a.lon, a.lat), st_geogfromtext(b.geom))) as  c, -- END Step 1\
+--                                                    \
+--                                                    `thesisprojects2019.audeMS.stadia_event` as d                      \
+--                                       WHERE c.eventid = d.eventid ) as tablenew ) as tablerank\
+--              WHERE rank =1) as tableunique            \
+-- ORDER BY eventid, user_id, datetime\
+-- }
